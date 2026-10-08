@@ -1,0 +1,15 @@
+{
+  "name": "claude-usage-meter",
+  "owner": {
+    "name": "Ernest Brenchley",
+    "url": "https://github.com/ErnestTramp"
+  },
+  "description": "Usage Meter, a Claude Code mod that shows your session and weekly limits.",
+  "plugins": [
+    {
+      "name": "usage-meter",
+      "source": "./",
+      "description": "A plain \"5h 62%\" button under the prompt that opens a compact sheet with your session, weekly and per-model weekly limits, and how long you have left at your current pace."
+    }
+  ]
+}
