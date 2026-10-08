@@ -71,3 +71,22 @@ export function miniLabel(rows: MeterRow[]): string | undefined {
 
   return first === undefined ? undefined : `${first.short} ${first.pctText}`
 }
+
+/**
+ * Lays out the sheet's columns for a card `bodyColumns` wide: the bars take whatever the name,
+ * percent and reset columns, their gaps and the close button leave, so the sheet fills the card
+ * edge to edge and only the bars grow. When the card is too thin to give the bars at least ten
+ * cells beside the reset column, that column is dropped and the bars take its space back.
+ */
+export function sheetLayout(
+  bodyColumns: number,
+  columns: { name: number; pct: number; resets: number },
+): { cells: number; showResets: boolean } {
+  const closeButton = 4
+  const minBar = 10
+  const fixed = columns.name + columns.pct + closeButton
+  const withResets = bodyColumns - fixed - columns.resets - 3 * 2
+  if (withResets >= minBar) return { cells: withResets, showResets: true }
+
+  return { cells: Math.max(4, bodyColumns - fixed - 2 * 2), showResets: false }
+}

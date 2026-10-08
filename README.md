@@ -16,7 +16,7 @@ Under the rows is one line about your pace:
 - **Session limit resets before you run out** when you are not
 - **Not using much** when you have been idle
 
-The dashed part of each bar is where your current pace takes it by the reset. The percent changes colour as it fills, and everything updates live.
+The dashed part of each bar is where your current pace takes it by the reset (red if that means running out). The percent changes colour as it fills. The bars stretch to fill the card at any width, and on a very thin card the reset text drops away so nothing overflows.
 
 ## Install
 
@@ -38,8 +38,10 @@ Needs Claude Code 2.1.287 or newer (the mods feature).
 
 - The session and weekly numbers come from the rate-limit figures Claude Code already has, pushed live after each response.
 - In the desktop app, once a minute it also asks the app's own read-only usage tool for per-model weekly limits such as Fable. That is how the extra rows appear.
-- No login tokens are read, no files are touched, and nothing goes over the network.
-- The pace comes from your last 45 minutes (last day for weekly limits), or the average since the window started if there is not enough recent activity.
+- No login tokens are read and nothing goes over the network. The only thing it writes is its own small store file (see below).
+- The pace is how fast tokens are being used right now across all your running Claude Code sessions (main chats and subagents), looked at over the last few minutes and refreshed every five seconds. It is turned into a percent-per-minute rate with a ratio the mod learns from how your real percentage has moved. Nothing running and nothing moving means no forecast.
+- A "you'll run out" warning only appears if the run-out is more than 10 minutes before the reset.
+- To do that it keeps token counts (never any text) per session in the plugin's own store under `~/.claude/plugins/store`, and drops them after about 100 minutes.
 
 Built and used in the desktop app's Code tab. In the terminal you should get the session and weekly bars, but the per-model rows need the desktop app, and I have tested that less.
 

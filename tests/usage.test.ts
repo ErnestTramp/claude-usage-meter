@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { barCells, barSpans, miniLabel, textBar } from '../hooks/line'
+import { barCells, barSpans, miniLabel, sheetLayout, textBar } from '../hooks/line'
 import { buildRows, verdictFor } from '../hooks/rows'
 import {
   DAY,
@@ -96,7 +96,7 @@ describe('merging and sampling', () => {
 
 describe('forecast', () => {
   test('a fast recent burn runs out before the reset', () => {
-    const resetsAt = NOW + HOUR
+    const resetsAt = NOW + 2 * HOUR
     const win = { kind: 'five_hour', pct: 50, resetsAt }
     const samples = [{ t: NOW - 30 * MINUTE, pct: 20, resetsAt }]
     const f = forecast(win, samples, NOW)
@@ -150,6 +150,28 @@ describe('rows', () => {
   })
 })
 
+describe('the sheet layout', () => {
+  const columns = { name: 7, pct: 3, resets: 16 }
+
+  test('the bars grow with the card while everything else stays put', () => {
+    const narrow = sheetLayout(80, columns)
+    const wide = sheetLayout(200, columns)
+    expect(narrow.showResets).toBe(true)
+    expect(wide.cells - narrow.cells).toBe(120)
+  })
+
+  test('a card too thin for the reset column drops it and the bars take the space back', () => {
+    const thin = sheetLayout(40, columns)
+    expect(thin.showResets).toBe(false)
+    expect(thin.cells).toBe(40 - (7 + 3 + 4) - 4)
+    expect(sheetLayout(60, columns).showResets).toBe(true)
+  })
+
+  test('the bars never collapse to nothing', () => {
+    expect(sheetLayout(10, columns).cells).toBe(4)
+  })
+})
+
 describe('the verdict chip', () => {
   const at = (pct: number, hours: number, samples: { t: number; pct: number; resetsAt: number }[] = []) =>
     forecast({ kind: 'five_hour', pct, resetsAt: NOW + hours * HOUR }, samples, NOW)
@@ -168,7 +190,7 @@ describe('the verdict chip', () => {
   test('no change lately reads as not using much', () => {
     const resetsAt = NOW + 2 * HOUR
     const v = verdictFor('Session', at(30, 2, [{ t: NOW - 80 * MINUTE, pct: 30, resetsAt }]))
-    expect(v.text).toBe('Not using much')
+    expect(v.text).toBe('Not using much right now')
   })
 
   test('with no pace to go on it only says when the reset is', () => {

@@ -1,4 +1,4 @@
-import type { UsageMeterSample, UsageMeterWindow } from '../types'
+import type { UsageMeterPace, UsageMeterSample, UsageMeterWindow } from '../types'
 
 export const MINUTE = 60_000
 export const HOUR = 60 * MINUTE
@@ -7,6 +7,8 @@ export const DAY = 24 * HOUR
 type History = Record<string, UsageMeterSample[]>
 
 const SAME_WINDOW_MS = 5 * MINUTE
+/** A run-out this close to the reset is not worth a warning. */
+export const RUN_OUT_MARGIN_MS = 10 * MINUTE
 const KEEP_MS = 8 * DAY
 const KEEP_SAMPLES = 240
 
@@ -64,7 +66,11 @@ export function sameWindow(a: number | undefined, b: number | undefined): boolea
   return Math.abs(a - b) < SAME_WINDOW_MS
 }
 
-/** Newer readings replace older ones; a rounding dip inside one window is ignored. */
+/**
+ * Folds new readings into the old. Within one window the percent only goes up (a lower
+ * reading is stale or rounded), and a reading from a window that has already ended is
+ * ignored once a newer window is known.
+ */
 export function mergeWindows(
   prev: UsageMeterWindow[],
   incoming: UsageMeterWindow[],
@@ -72,12 +78,18 @@ export function mergeWindows(
   const byKind = new Map<string, UsageMeterWindow>(prev.map(w => [w.kind, w]))
   for (const w of incoming) {
     const old = byKind.get(w.kind)
-    const isRoundingDip =
-      old !== undefined &&
-      sameWindow(old.resetsAt, w.resetsAt) &&
-      w.pct < old.pct &&
-      old.pct - w.pct < 1
-    byKind.set(w.kind, isRoundingDip ? { ...w, pct: old.pct } : w)
+    if (old === undefined) {
+      byKind.set(w.kind, w)
+      continue
+    }
+    const isOlderWindow =
+      old.resetsAt !== undefined && w.resetsAt !== undefined && w.resetsAt < old.resetsAt - SAME_WINDOW_MS
+    if (isOlderWindow) continue
+    if (sameWindow(old.resetsAt, w.resetsAt)) {
+      byKind.set(w.kind, { ...w, pct: Math.max(old.pct, w.pct) })
+    } else {
+      byKind.set(w.kind, w)
+    }
   }
 
   return sortWindows([...byKind.values()])
@@ -116,22 +128,29 @@ export function recordSamples(
 export type Forecast = {
   /** Percent per hour; 0 when idle, null when unknown. */
   rate: number | null
-  basis: 'recent' | 'average' | 'none'
+  basis: 'tokens' | 'recent' | 'average' | 'none'
   resetsInMs: number | null
   /** Time until 100% at this pace; null when not burning. 0 when full. */
   msToFull: number | null
   /** Where it will stand at reset at this pace, uncapped. */
   projectedAtReset: number | null
-  /** True when 100% comes before the reset. */
+  /** True when 100% comes well before the reset (by more than RUN_OUT_MARGIN_MS). */
   willRunOut: boolean
   isFull: boolean
 }
 
 /**
- * Burn rate from the recent samples when there is enough span between them,
- * else the window's average since it started.
+ * Burn rate. For the session limit with a `pace`: tokens per minute right now times the learned
+ * percent-per-token, or the percent's own movement over the last few minutes, whichever is
+ * higher; nothing running and nothing moving is idle (rate 0). Other windows use the percent's
+ * slope over a longer look-back, then the window's average.
  */
-export function forecast(win: UsageMeterWindow, samples: UsageMeterSample[], now: number): Forecast {
+export function forecast(
+  win: UsageMeterWindow,
+  samples: UsageMeterSample[],
+  now: number,
+  pace?: UsageMeterPace,
+): Forecast {
   const resetsInMs = win.resetsAt === undefined ? null : Math.max(0, win.resetsAt - now)
   if (win.pct >= 100) {
     return {
@@ -147,29 +166,52 @@ export function forecast(win: UsageMeterWindow, samples: UsageMeterSample[], now
 
   const length = windowLength(win.kind)
   const isShort = length !== null && length <= 5 * HOUR
-  const lookback = length === null ? HOUR : isShort ? 45 * MINUTE : DAY
-  const minSpan = length === null || isShort ? 5 * MINUTE : 2 * HOUR
-
   const mine = samples
     .filter(s => sameWindow(s.resetsAt, win.resetsAt) && s.t <= now)
     .sort((a, b) => a.t - b.t)
-  let anchor: UsageMeterSample | undefined
-  for (const s of mine) {
-    if (s.t <= now - lookback) anchor = s
+
+  /** Percent per ms between an anchor sample and now, if the anchor is old enough. */
+  const slope = (lookback: number, minSpan: number): number | null => {
+    let anchor: UsageMeterSample | undefined
+    for (const s of mine) {
+      if (s.t <= now - lookback) anchor = s
+    }
+    anchor ??= mine.find(s => now - s.t <= lookback)
+    if (anchor === undefined || now - anchor.t < minSpan) return null
+
+    return Math.max(0, win.pct - anchor.pct) / (now - anchor.t)
   }
-  anchor ??= mine.find(s => now - s.t <= lookback)
+  const average = (): number | null => {
+    if (length === null || win.resetsAt === undefined) return null
+    const elapsed = now - (win.resetsAt - length)
+    const minElapsed = isShort ? 10 * MINUTE : 3 * HOUR
+
+    return elapsed >= minElapsed && elapsed <= length * 1.01 ? win.pct / elapsed : null
+  }
 
   let perMs: number | null = null
   let basis: Forecast['basis'] = 'none'
-  if (anchor !== undefined && now - anchor.t >= minSpan) {
-    perMs = Math.max(0, win.pct - anchor.pct) / (now - anchor.t)
-    basis = 'recent'
-  }
-  if (perMs === null && length !== null && win.resetsAt !== undefined) {
-    const elapsed = now - (win.resetsAt - length)
-    if (elapsed >= (isShort ? 10 * MINUTE : 3 * HOUR) && elapsed <= length * 1.01) {
-      perMs = win.pct / elapsed
-      basis = 'average'
+  if (win.kind === 'five_hour' && pace !== undefined) {
+    const tokenRate = pace.pctPerToken === null ? null : (pace.pctPerToken * pace.tokensPerMin) / MINUTE
+    const moved = slope(10 * MINUTE, 4 * MINUTE)
+    if (tokenRate !== null || moved !== null) {
+      perMs = Math.max(tokenRate ?? 0, moved ?? 0)
+      basis = tokenRate !== null && tokenRate >= (moved ?? 0) ? 'tokens' : 'recent'
+    } else if (pace.tokensPerMin === 0) {
+      perMs = 0
+      basis = 'recent'
+    } else {
+      perMs = average()
+      basis = perMs === null ? 'none' : 'average'
+    }
+  } else {
+    const lookback = length === null ? HOUR : isShort ? 45 * MINUTE : DAY
+    const minSpan = length === null || isShort ? 5 * MINUTE : 2 * HOUR
+    perMs = slope(lookback, minSpan)
+    basis = perMs === null ? 'none' : 'recent'
+    if (perMs === null) {
+      perMs = average()
+      basis = perMs === null ? 'none' : 'average'
     }
   }
 
@@ -183,7 +225,8 @@ export function forecast(win: UsageMeterWindow, samples: UsageMeterSample[], now
     resetsInMs,
     msToFull,
     projectedAtReset,
-    willRunOut: msToFull !== null && (resetsInMs === null || msToFull < resetsInMs),
+    willRunOut:
+      msToFull !== null && (resetsInMs === null || msToFull + RUN_OUT_MARGIN_MS < resetsInMs),
     isFull: false,
   }
 }

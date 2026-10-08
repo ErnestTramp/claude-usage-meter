@@ -1,4 +1,4 @@
-import type { UsageMeterSample, UsageMeterWindow } from '../types'
+import type { UsageMeterPace, UsageMeterSample, UsageMeterWindow } from '../types'
 import { type Forecast, fmtDuration, forecast, freshen, labelFor, sortWindows } from './usage'
 
 /** One plain sentence about the pace, and how worried to look. */
@@ -46,7 +46,7 @@ export function verdictFor(label: string, f: Forecast): Verdict {
     }
   }
   if (f.rate === null) return { tone: 'ok', text: reset === null ? 'Plenty left' : `${label} limit resets in ${reset}` }
-  if (f.rate === 0) return { tone: 'ok', text: 'Not using much' }
+  if (f.rate === 0) return { tone: 'ok', text: 'Not using much right now' }
 
   return { tone: 'ok', text: `${label} limit resets before you run out` }
 }
@@ -56,9 +56,10 @@ export function buildRows(
   list: UsageMeterWindow[],
   samples: Record<string, UsageMeterSample[]>,
   now: number,
+  pace?: UsageMeterPace,
 ): MeterRow[] {
   return sortWindows(list).map(w => freshen(w, now)).map(w => {
-    const f = forecast(w, samples[w.kind] ?? [], now)
+    const f = forecast(w, samples[w.kind] ?? [], now, pace)
     let alert: string | null = null
     if (f.isFull) alert = 'LIMIT HIT'
     else if (f.willRunOut && f.msToFull !== null) alert = `empty in ${fmtDuration(f.msToFull)}`

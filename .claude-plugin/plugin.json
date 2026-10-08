@@ -1,7 +1,7 @@
 {
   "name": "usage-meter",
   "displayName": "Usage Meter",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A usage meter for Claude Code: a plain \"5h 62%\" button under the prompt that opens a compact sheet with your session, weekly and per-model weekly limits, and how long you have left at your current pace.",
   "author": {
     "name": "Ernest Brenchley",
@@ -10,6 +10,12 @@
   "homepage": "https://github.com/ErnestTramp/claude-usage-meter",
   "repository": "https://github.com/ErnestTramp/claude-usage-meter",
   "license": "MIT",
-  "keywords": ["usage", "rate-limit", "meter", "status", "mod"],
+  "keywords": [
+    "usage",
+    "rate-limit",
+    "meter",
+    "status",
+    "mod"
+  ],
   "types": "./types/index.d.ts"
 }
