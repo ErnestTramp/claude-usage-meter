@@ -171,6 +171,55 @@ describe('the sheet above the input', () => {
   })
 })
 
+describe('the desktop bars (the stray-lines bug)', () => {
+  test('are exactly one vector bar per limit, never line characters that can wrap', async ($, on) => {
+    await arrange($, on, 0)
+    await $.session.measure(measure(22))
+
+    const footer = await $.ui.mount({
+      plugin: 'usage-meter',
+      surface: 'desktop',
+      component: 'SessionMode',
+      props: { modes: [] },
+    })
+    await footer.press({ key: 'meter' })
+    const sheet = await $.ui.mount({ plugin: 'usage-meter', surface: 'desktop', ...band(100) })
+
+    expect(await sheet.findAll({ type: 'Svg' })).toHaveLength(3)
+    const drawn = JSON.stringify(await sheet.drawn())
+    expect(drawn).not.toMatch(/[\u2500\u2501\u254c]/)
+    await sheet.unmount()
+    await footer.unmount()
+  })
+
+  test('keep their proportions and grow with the card', async ($, on) => {
+    await arrange($, on, 0)
+    await $.session.measure(measure(22))
+
+    const footer = await $.ui.mount({
+      plugin: 'usage-meter',
+      surface: 'desktop',
+      component: 'SessionMode',
+      props: { modes: [] },
+    })
+    await footer.press({ key: 'meter' })
+    const widths = async (columns: number) => {
+      const sheet = await $.ui.mount({ plugin: 'usage-meter', surface: 'desktop', ...band(columns) })
+      const drawn = JSON.stringify(await sheet.drawn())
+      await sheet.unmount()
+
+      return [...drawn.matchAll(/viewBox=\\"0 0 ([\d.]+) 3\\"/g)].map(m => Number(m[1]))
+    }
+    const narrow = await widths(80)
+    const wide = await widths(200)
+    expect(narrow).toHaveLength(3)
+    expect(new Set(narrow).size).toBe(1)
+    // 120 more cells at 7.9 px each, give or take rounding
+    expect(Math.abs(wide[0]! - narrow[0]! - 120 * 7.9) <= 1).toBe(true)
+    await footer.unmount()
+  })
+})
+
 describe('a very thin card', () => {
   test('drops the reset text instead of overflowing, and brings it back when there is room', async ($, on) => {
     await arrange($, on, 0)

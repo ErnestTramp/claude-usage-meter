@@ -90,3 +90,30 @@ export function sheetLayout(
 
   return { cells: Math.max(4, bodyColumns - fixed - 2 * 2), showResets: false }
 }
+
+/**
+ * A desktop cell is the width of the app's code font, and the sheet's text is drawn in a
+ * proportional font, so bars made of line characters cannot fit a cell count there (they come out
+ * wider and wrap). The desktop draws the bar as vector instead, this many CSS pixels per cell
+ * (measured on the app's default code font).
+ */
+export const DESKTOP_CELL_PX = 7.9
+export const DESKTOP_BAR_HEIGHT = 3
+
+/** The same bar as exact-proportion vector: used, projected (dashed), free. */
+export function barSvg(widthPx: number, bar: { pct: number; ghostPct: number | null; alert: string | null }): string {
+  const h = DESKTOP_BAR_HEIGHT
+  const share = (pct: number) => (Math.min(100, Math.max(0, pct)) / 100) * widthPx
+  const fill = bar.pct > 0 ? Math.max(h, share(bar.pct)) : 0
+  const end = bar.ghostPct === null ? fill : Math.max(fill, share(bar.ghostPct))
+  const ghostColor = bar.alert !== null ? CORAL : levelColor(bar.ghostPct ?? bar.pct)
+  const round = (n: number) => Math.round(n * 100) / 100
+  const pill = (w: number, color: string) =>
+    w > 0 ? `<rect width="${round(w)}" height="${h}" rx="${h / 2}" fill="${color}"/>` : ''
+  const dashes =
+    end - fill > 0.5
+      ? `<line x1="${round(fill)}" x2="${round(end)}" y1="${h / 2}" y2="${h / 2}" stroke="${mix(ghostColor, TRACK, 0.35)}" stroke-width="${h}" stroke-dasharray="4 3"/>`
+      : ''
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${round(widthPx)} ${h}" width="${round(widthPx)}" height="${h}">${pill(widthPx, TRACK)}${dashes}${pill(fill, levelColor(bar.pct))}</svg>`
+}

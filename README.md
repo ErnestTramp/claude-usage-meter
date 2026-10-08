@@ -43,6 +43,8 @@ Needs Claude Code 2.1.287 or newer (the mods feature).
 - A "you'll run out" warning only appears if the run-out is more than 10 minutes before the reset.
 - To do that it keeps token counts (never any text) per session in the plugin's own store under `~/.claude/plugins/store`, and drops them after about 100 minutes.
 
+On the desktop the bars are drawn as vector, sized for the app's default code font (character-based bars wrap in its proportional font); with a very different font size they may fall slightly short of, or past, the column. In the terminal they are line characters.
+
 Built and used in the desktop app's Code tab. In the terminal you should get the session and weekly bars, but the per-model rows need the desktop app, and I have tested that less.
 
 The mods API is new and can change between Claude Code releases, so a future update may need a fix here.

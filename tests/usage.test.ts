@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { barCells, barSpans, miniLabel, sheetLayout, textBar } from '../hooks/line'
+import { barCells, barSpans, barSvg, miniLabel, sheetLayout, textBar } from '../hooks/line'
 import { buildRows, verdictFor } from '../hooks/rows'
 import {
   DAY,
@@ -147,6 +147,23 @@ describe('rows', () => {
   test('a window that already reset reads as empty', () => {
     const rows = buildRows([{ kind: 'five_hour', pct: 95, resetsAt: NOW - MINUTE }], {}, NOW)
     expect(rows[0]?.pctText).toBe('0%')
+  })
+})
+
+describe('the vector bar', () => {
+  const bar = { pct: 22, ghostPct: 60, alert: null }
+
+  test('is a three-pixel pill with the proportions drawn in', () => {
+    const svg = barSvg(400, bar)
+    expect(svg).toContain('viewBox="0 0 400 3"')
+    expect(svg).toContain('width="88"')
+    expect(svg).toContain('stroke-dasharray')
+    expect(svg.match(/<rect/g)).toHaveLength(2)
+  })
+
+  test('has no dashes when nothing is projected, and none of the track when full', () => {
+    expect(barSvg(400, { pct: 22, ghostPct: null, alert: null })).not.toContain('stroke-dasharray')
+    expect(barSvg(400, { pct: 0, ghostPct: null, alert: null }).match(/<rect/g)).toHaveLength(1)
   })
 })
 

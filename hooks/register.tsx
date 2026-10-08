@@ -2,7 +2,18 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { UsageMeterPace, UsageMeterSample, UsageMeterWindow } from '../types'
-import { AMBER, CORAL, MINT, barSpans, levelColor, miniLabel, sheetLayout } from './line'
+import {
+  AMBER,
+  CORAL,
+  DESKTOP_BAR_HEIGHT,
+  DESKTOP_CELL_PX,
+  MINT,
+  barSpans,
+  barSvg,
+  levelColor,
+  miniLabel,
+  sheetLayout,
+} from './line'
 import { buildRows } from './rows'
 import {
   type Buckets,
@@ -286,8 +297,9 @@ export const register: Register = on => {
 
     const { Box, Text, Button } = $.ui.resolve(e)
     const names = rows.map(row => row.label.replace(/ /g, '\u00a0'))
+    // one cell of cushion on the name: the desktop draws it in a proportional font
     const widths = {
-      name: Math.max(...names.map(name => name.length)),
+      name: Math.max(...names.map(name => name.length)) + 1,
       pct: Math.max(...rows.map(row => row.pctText.length)),
       resets: Math.max(...rows.map(row => (row.resets ?? '').length)),
     }
@@ -295,41 +307,49 @@ export const register: Register = on => {
     const chip = rows[0]?.verdict
     const chipColor = chip?.tone === 'hit' ? CORAL : chip?.tone === 'warn' ? AMBER : MINT
 
+    // Each limit is its own row so its name, bar, percent and reset always share a baseline.
+    const bar = (row: (typeof rows)[number]) => {
+      if (e.surface === 'desktop') {
+        const { Svg } = $.ui.resolve(e)
+        const px = Math.round(cells * DESKTOP_CELL_PX)
+
+        return <Svg source={barSvg(px, row)} alt={`${row.label} ${row.pctText} used`} width={px} height={DESKTOP_BAR_HEIGHT} />
+      }
+
+      return (
+        <Text>
+          {barSpans(row, cells).map(span => (
+            <Text color={span.color}>{span.text}</Text>
+          ))}
+        </Text>
+      )
+    }
+
     return (
       <Box justifyContent="space-between">
         <Box flexDirection="column">
-          <Box gap={2}>
-            <Box flexDirection="column" width={widths.name} flexShrink={0}>
-              {names.map(name => (
-                <Text wrap="truncate">{name}</Text>
-              ))}
-            </Box>
-            <Box flexDirection="column" width={cells} flexShrink={0}>
-              {rows.map(row => (
-                <Text wrap="truncate">
-                  {barSpans(row, cells).map(span => (
-                    <Text color={span.color}>{span.text}</Text>
-                  ))}
-                </Text>
-              ))}
-            </Box>
-            <Box flexDirection="column" alignItems="flex-end" width={widths.pct} flexShrink={0}>
-              {rows.map(row => (
+          {rows.map((row, i) => (
+            <Box gap={2} alignItems="center">
+              <Box width={widths.name} flexShrink={0}>
+                <Text wrap="truncate">{names[i]}</Text>
+              </Box>
+              <Box width={cells} flexShrink={0} overflow="hidden">
+                {bar(row)}
+              </Box>
+              <Box width={widths.pct} justifyContent="flex-end" flexShrink={0}>
                 <Text bold color={levelColor(row.pct)}>
                   {row.pctText}
                 </Text>
-              ))}
-            </Box>
-            {showResets && (
-              <Box flexDirection="column" width={widths.resets} flexShrink={0}>
-                {rows.map(row => (
+              </Box>
+              {showResets && (
+                <Box width={widths.resets} flexShrink={0}>
                   <Text wrap="truncate" dimColor>
                     {row.resets ?? ''}
                   </Text>
-                ))}
-              </Box>
-            )}
-          </Box>
+                </Box>
+              )}
+            </Box>
+          ))}
           {chip !== undefined && (
             <Text wrap="truncate" color={chipColor}>
               {chip.text}
